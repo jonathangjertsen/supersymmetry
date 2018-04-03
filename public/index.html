@@ -145,6 +145,17 @@
 </body>
 
 <script>
+    let notifications = false;
+    if ('Notification' in window && Notification.permission !== 'denied') {
+        if (Notification.permission === 'granted') {
+            notifications = true;
+        } else {
+            Notification.requestPermission(permission => {
+                notifications = permission === 'granted';
+            });
+        }
+    }
+
     const params = {};
     location.search.substr(1).split("&").forEach(function(item){
         params[item.split("=")[0]] = item.split("=")[1]}
@@ -217,7 +228,12 @@
     const updatePlayer = () => {
         const playerField = document.getElementById('current-player');
         if (board.game.currentPlayer) {
-            playerField.value = `${board.game.currentPlayer.username} - ${board.game.currentPlayer.color}`;
+            const prevValue = playerField.value;
+            const newValue = `${board.game.currentPlayer.username} (${board.game.currentPlayer.color})`;
+            playerField.value = newValue;
+            if (prevValue !== newValue && notifications) {
+                new Notification(`Next move: ${newValue}`, { tag: 'newmove', renotify: true, requireInteraction: false });
+            }
         } else {
             playerField.value = "";
         }
@@ -238,6 +254,12 @@
     document.getElementById('button-do-move').addEventListener('click', () => {
         board.doMoves();
         updatePlayer();
+
+        // suppress notifications for a bit
+        if (notifications) {
+            notifications = false;
+            window.setTimeout(() => notifications = true, 1000);
+        }
     });
     document.getElementById('button-reset-move').addEventListener('click', () => {
         board.resetMoves();
