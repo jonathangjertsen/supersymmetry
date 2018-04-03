@@ -1,0 +1,10 @@
+{
+  "name": "supersymmetry-server",
+  "version": "0.0.1",
+  "description": "Server for supersymmetry",
+  "dependencies": {
+    "express": "^4.15.2",
+    "socket.io": "^2.1.0",
+    "sqlite3": "^4.0.0"
+  }
+}

@@ -3,23 +3,78 @@
 <head>
     <meta charset="UTF-8">
     <title>Title</title>
-    <script src="vendor/tinycolor.js"></script>
-    <script src="supersymmetry.js"></script>
+    <script type="text/javascript" src="./vendor/tinycolor.js"></script>
+    <script type="text/javascript" src="./supersymmetry.js"></script>
+    <script type="text/javascript" src="/socket.io/socket.io.js"></script>
     <meta name="viewport" content="user-scalable = no">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
+        body {
+            font: 100% Helvetica, Arial, sans-serif;
+        }
+
         #container {
             margin: auto;
             width: 500px;
         }
 
         #game {
-            border: 1px solid black;
+            border: 1px solid dimgrey;
+            padding: 5px;
         }
 
         #controls {
-            border: 1px solid black;
+            border: 1px solid dimgrey;
             width: 500px;
+            background: #f4f7f8;
+            padding: 5px;
+        }
+
+        #controls fieldset {
+            padding: 15px;
+        }
+
+        #controls input {
+            margin-bottom: 5px;
+            margin-top: 5px;
+            box-sizing: border-box;
+            -webkit-box-sizing: border-box;
+            -moz-box-sizing: border-box;
+            border:1px solid #BEBEBE;
+            padding: 7px;
+            -webkit-transition: all 0.30s ease-in-out;
+            -moz-transition: all 0.30s ease-in-out;
+            -ms-transition: all 0.30s ease-in-out;
+            -o-transition: all 0.30s ease-in-out;
+            outline: none;
+        }
+
+        #controls input:not([type=button]):focus {
+            -moz-box-shadow: 0 0 8px #88D5E9;
+            -webkit-box-shadow: 0 0 8px #88D5E9;
+            box-shadow: 0 0 8px #88D5E9;
+            border: 1px solid #88D5E9;
+        }
+
+        #controls input[type=button] {
+            background: #5BA9CD;
+            padding: 8px 15px 8px 15px;
+            border: none;
+            color: #fff;
+        }
+
+        #controls input[type=button]:hover {
+            background: #4691A4;
+            box-shadow:none;
+            -moz-box-shadow:none;
+            -webkit-box-shadow:none;
+        }
+
+        #player-username:invalid {
+            -moz-box-shadow: 0 0 1px #D58888;
+            -webkit-box-shadow: 0 0 1px #D58888;
+            box-shadow: 0 0 1px #D58888;
+            border: 1px solid #D58888;
         }
 
         #base-size {
@@ -33,7 +88,19 @@
 
     <form id="controls">
         <fieldset>
-            <legend>Status</legend>
+            <legend>Move</legend>
+            <input type="button" value="Reset move" id="button-reset-move" disabled>
+            <input type="button" value="Do move" id="button-do-move" disabled>
+        </fieldset>
+
+        <fieldset>
+            <legend>Current game status</legend>
+            <label for="current-player">Game ID</label>
+            <input type="text" readonly value="" id="game-id">
+            <br/>
+            <label for="current-player">Game URL</label>
+            <input type="text" readonly size="40" value="" id="game-url">
+            <br/>
             <label for="current-player">Current player</label>
             <input type="text" disabled value="" id="current-player">
             <br/>
@@ -42,17 +109,11 @@
         </fieldset>
 
         <fieldset>
-            <legend>Move</legend>
-            <input type="button" value="Reset move" id="button-reset-move" disabled>
-            <input type="button" value="Do move" id="button-do-move" disabled>
-        </fieldset>
-
-        <fieldset>
-            <legend>Game settings</legend>
+            <legend>New game</legend>
             <fieldset>
                 <legend>Add players to the next game</legend>
                 <label for="player-username">Username</label>
-                <input type="text" size="10" id="player-username">
+                <input type="text" size="10" id="player-username" required>
                 <label for="player-color">Color</label>
                 <select id="player-color">
                     <option id="select-black">black</option>
@@ -71,7 +132,7 @@
             </fieldset>
             <br/>
             <fieldset id="ruleset">
-                <legend>Rules (updated instantly)</legend>
+                <legend>Rules</legend>
             </fieldset>
             <br/>
             <label for="base-size">Base size</label>
@@ -84,9 +145,15 @@
 </body>
 
 <script>
+    const params = {};
+    location.search.substr(1).split("&").forEach(function(item){
+        params[item.split("=")[0]] = item.split("=")[1]}
+    );
+    const socket = io();
+
     const canvas = document.getElementById('game');
 
-    const players = [];
+    let players = [];
 
     function setUpGame(board) {
         board.drawing.ctx = canvas.getContext('2d');
@@ -101,12 +168,13 @@
         } else {
             document.getElementById('error').value = "There are no players";
         }
+        players = [];
 
         board.reportError = err => document.getElementById('error').value = err;
         return board;
     }
 
-    const board = new Board(4);
+    let board = new Board(4);
     setUpGame(board);
 
     function makeCheckbox(rule) {
@@ -156,13 +224,16 @@
     };
 
     document.getElementById('controls').reset();
+    let redirectIfNew = false;
     document.getElementById('button-reset-game').addEventListener('click', () => {
-        board.n = document.getElementById('base-size').value;
+        board = new Board(document.getElementById('base-size').value);
         setUpGame(board);
         updatePlayer();
         board.init();
         document.getElementById('button-do-move').disabled = false;
         document.getElementById('button-reset-move').disabled = false;
+        socket.emit('newGame', board.makeSavestate());
+        redirectIfNew = true;
     });
     document.getElementById('button-do-move').addEventListener('click', () => {
         board.doMoves();
@@ -188,5 +259,33 @@
     });
 
     board.init();
+    board.socket = socket;
+
+    if ('game' in params) {
+        socket.emit('requestGame', params.game);
+    }
+
+    function setGameId(gid) {
+        board.id = gid;
+        document.getElementById('game-id').value = gid;
+        const gameUrl = location.protocol + '//' + location.host + location.pathname + '?game=' + gid;
+        if (redirectIfNew) {
+            window.location = gameUrl;
+        }
+        document.getElementById('game-url').value = gameUrl;
+        document.getElementById('button-do-move').disabled = false;
+        document.getElementById('button-reset-move').disabled = false;
+    }
+
+    function loadGame(data) {
+        const state = JSON.parse(data.state);
+        board.loadFromSavestate(state);
+        updatePlayer();
+        setGameId(data.gid);
+    }
+
+    socket.on('newGame', setGameId);
+    socket.on('newGameState', loadGame);
+    socket.on('requestGame', loadGame);
 </script>
 </html>

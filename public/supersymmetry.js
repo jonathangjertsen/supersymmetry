@@ -3,12 +3,14 @@ class Player {
         this.username = username;
         this.color = color;
         this.highlightedPiece = null;
+        this.active = true;
     }
 }
 
 class Board {
-    constructor(n) {
-        this.n = n;
+    constructor(n, id) {
+        this.n = parseInt(n);
+        this.id = id;
 
         this.drawing = {
             ctx: null,
@@ -213,7 +215,7 @@ class Board {
                     enabled: false,
                     required: true,
                     description: 'Can not land in enemy territory, even temporarily',
-                    check: this.inEnemyTerritory.bind(this)
+                    check: this.notInEnemyTerritory.bind(this)
                 }
             ],
             destinationRules: [
@@ -222,33 +224,98 @@ class Board {
                     enabled: true,
                     required: false,
                     description: 'Can not finish in enemy territory',
-                    check: this.inEnemyTerritory.bind(this)
+                    check: this.notInEnemyTerritory.bind(this)
                 }
             ]
         };
     }
 
-    inEnemyTerritory(i, j) {
+    broadcast() {
+        if (this.socket && this.id) {
+            this.socket.emit('move', {
+                gid: this.id,
+                state: this.makeSavestate()
+            });
+        }
+    }
+
+    makeSavestate() {
+        return JSON.parse(JSON.stringify({
+            board: this.board,
+            n: this.n,
+            game: this.game,
+            locations: this.locations
+        }));
+    }
+
+    loadFromSavestate(savestate) {
+        this.board = savestate.board;
+        this.n = savestate.n;
+        this.locations = savestate.locations;
+        const ruleTypes = ['rules', 'destinationRules'];
+        for (let rt = 0; rt < ruleTypes.length; rt++) {
+            const ruleType = ruleTypes[rt];
+            for (let r = 0; r < savestate.game[ruleType].length; r++) {
+                for (let prop in savestate.game[ruleType][r]) {
+                    if (prop !== 'check') {
+                        this.game[ruleType][r][prop] = savestate.game[ruleType][r][prop];
+                    }
+                }
+            }
+        }
+        for (let prop in savestate.game) {
+            if (prop !== 'rules' && prop !== 'destinationRules') {
+                this.game[prop] = savestate.game[prop];
+            }
+        }
+        this.drawBoard();
+        this.drawAllPieces();
+
+        if (this.game.currentPlayer.highlightedPiece) {
+            const piece = this.game.currentPlayer.highlightedPiece;
+            this.drawHighlights(piece.i, piece.j);
+        }
+    }
+
+    inHome(i, j) {
+        return this.game.currentPlayer.color === this.nameFromCode(this.board[i][j]);
+    }
+
+    inDestination(i, j) {
         const playerColor = this.game.currentPlayer.color;
-        const locationColor = this.nameFromCode(this.board[i][j]);
+        const placeColor = this.nameFromCode(this.board[i][j]);
+        return (
+            (playerColor === 'red' && placeColor === 'black')
+            || (playerColor === 'black' && placeColor === 'red')
+            || (playerColor === 'green' && placeColor === 'white')
+            || (playerColor === 'white' && placeColor === 'green')
+            || (playerColor === 'yellow' && placeColor === 'blue')
+            || (playerColor === 'blue' && placeColor === 'yellow')
+        );
+    }
 
-        if (locationColor === 'free') {
+    notInEnemyTerritory(i, j) {
+        if (this.nameFromCode(this.board[i][j]) === 'free') {
             return true;
+        } else {
+            return this.inHome(i, j) || this.inDestination(i, j);
         }
+    }
 
-        if (playerColor === 'red' || playerColor === 'black') {
-            return locationColor === 'red' || locationColor === 'black';
-        }
+    victory() {
+        const playerCode = this.codes[this.game.currentPlayer.color];
+        const piecesNeeded = this.n * (this.n + 1) / 2;
+        let piecesIn = 0;
+        this.forBoard((i, j) => {
+            if (this.locations[i][j] === playerCode) {
+                piecesIn += this.inDestination(i, j);
+            }
+        });
+        return piecesIn >= piecesNeeded;
+    }
 
-        if (playerColor === 'green' || playerColor === 'white') {
-            return locationColor === 'green' || locationColor === 'green';
-        }
-
-        if (playerColor === 'yellow' || playerColor === 'blue') {
-            return locationColor === 'yellow' || locationColor === 'blue';
-        }
-
-        return false;
+    onVictory(message) {
+        console.log(message);
     }
 
     occupied(i, j) {
@@ -259,21 +326,21 @@ class Board {
         this.drawing.enabled = true;
         this.initBoard();
         this.initLocations();
-        this.save();
+        this.setRestorePoint();
         this.drawBoard();
         this.drawAllPieces();
         this.drawing.ctx.canvas.onclick = this.click.bind(this);
         this.drawing.ctx.canvas.onmousemove = this.hover.bind(this);
     }
 
-    save() {
+    setRestorePoint() {
         this.backup = {
             board: JSON.parse(JSON.stringify(this.board)),
             locations: JSON.parse(JSON.stringify(this.locations))
         }
     }
 
-    load() {
+    loadRestore() {
         this.board = this.backup.board;
         this.locations = this.backup.locations;
     }
@@ -333,7 +400,7 @@ class Board {
         }
 
         // If nothing is highlighted
-        this.save();
+        this.setRestorePoint();
         if (!isOwnPiece) {
             this.reportError("Must choose an own piece");
             return;
@@ -355,10 +422,15 @@ class Board {
     }
 
     _clickedOwnPiece(i, j) {
+        this.game.currentPlayer.highlightedPiece = { i: i, j: j };
         this.drawBoard();
         this.drawAllPieces();
+        this.drawHighlights(i, j);
+        this.broadcast();
+    }
+
+    drawHighlights(i, j) {
         this.highlight(i, j, tinycolor('orange').darken(10));
-        this.game.currentPlayer.highlightedPiece = { i: i, j: j };
         if (this.drawing.highlightAllowed) {
             this.forBoard((iMaybe, jMaybe) => {
                 for (let r = 0; r < this.game.rules.length; r++) {
@@ -387,27 +459,52 @@ class Board {
                 }
             }
 
+            if (this.victory()) {
+                this.game.currentPlayer.active = false;
+                this.onVictory(`Victory for ${this.game.currentPlayer.username}!`);
+            }
+
             this.game.currentPlayer.highlightedPiece = null;
             this.drawBoard();
             this.drawAllPieces();
+            this.nextPlayer();
+            this.broadcast();
+        }
+    }
+
+    nextPlayer () {
+        let activePlayers = 0;
+        for (let p = 0; p < this.game.players.length; p++) {
+            activePlayers += this.game.players[p].active;
+        }
+        if (!activePlayers) {
+            this.reportError("Game is complete.");
+            return;
+        }
+
+        let tries = 0;
+        do {
             let next = this.playerIdx(this.game.currentPlayer.color) + 1;
             if (next >= this.game.players.length) {
                 next = 0;
             }
             this.game.currentPlayer = this.game.players[next];
-            this.game.hops = 0;
-            this.game.didSingleHop = false;
-            this.save();
-        }
+            tries++;
+        } while (!this.game.currentPlayer.active && tries <= activePlayers);
+
+        this.game.hops = 0;
+        this.game.didSingleHop = false;
+        this.setRestorePoint();
     }
 
     resetMoves() {
-        this.load();
+        this.loadRestore();
         this.game.currentPlayer.highlightedPiece = null;
         this.game.hops = 0;
         this.game.didSingleHop = false;
         this.drawBoard();
         this.drawAllPieces();
+        this.broadcast();
     }
 
     get width() {
