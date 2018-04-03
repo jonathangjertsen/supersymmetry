@@ -5,12 +5,33 @@
     <title>Title</title>
     <script src="vendor/tinycolor.js"></script>
     <script src="supersymmetry.js"></script>
+    <meta name="viewport" content="user-scalable = no">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        #container {
+            margin: auto;
+            width: 500px;
+        }
+
+        #game {
+            border: 1px solid black;
+        }
+
+        #controls {
+            border: 1px solid black;
+            width: 500px;
+        }
+
+        #base-size {
+            width: 40px;
+        }
+    </style>
 </head>
 <body>
-<div class="board">
-    <canvas id="game" width="500" height="500" style="border: 1px solid black"></canvas>
+<div id="container">
+    <canvas id="game" width="500" height="500"></canvas>
 
-    <form id="controls" style="border: 1px solid black; width: 500px;">
+    <form id="controls">
         <fieldset>
             <legend>Status</legend>
             <label for="current-player">Current player</label>
@@ -27,9 +48,9 @@
         </fieldset>
 
         <fieldset>
-            <legend>Start new game</legend>
+            <legend>Game settings</legend>
             <fieldset>
-                <legend>Add players</legend>
+                <legend>Add players to the next game</legend>
                 <label for="player-username">Username</label>
                 <input type="text" size="10" id="player-username">
                 <label for="player-color">Color</label>
@@ -49,8 +70,12 @@
                 </ul>
             </fieldset>
             <br/>
+            <fieldset id="ruleset">
+                <legend>Rules (updated instantly)</legend>
+            </fieldset>
+            <br/>
             <label for="base-size">Base size</label>
-            <input type="number" value="4" max="10" min="1" size="1" id="base-size" style="width: 40px;">
+            <input type="number" value="4" max="10" min="1" size="1" id="base-size">
             <input type="button" value="Start new game" id="button-reset-game">
         </fieldset>
     </form>
@@ -63,13 +88,11 @@
 
     const players = [];
 
-    function startGame(n) {
-        const board = new Board(n);
+    function setUpGame(board) {
         board.drawing.ctx = canvas.getContext('2d');
         board.drawing.unit = 25;
         board.drawing.yOffset = 70;
         board.drawing.xOffset = -60;
-        //board.movePiece()
         if (players.length) {
             for (let p = 0; p < players.length; p++) {
                 board.addPlayer(players[p].username, players[p].color);
@@ -79,18 +102,65 @@
             document.getElementById('error').value = "There are no players";
         }
 
-        board.init();
         board.reportError = err => document.getElementById('error').value = err;
         return board;
     }
 
-    let board = startGame(4);
-    const updatePlayer = () => document.getElementById('current-player').value = `${board.game.currentPlayer.username} - ${board.game.currentPlayer.color}`;
+    const board = new Board(4);
+    setUpGame(board);
+
+    function makeCheckbox(rule) {
+        const checkboxNode = document.createElement('input');
+        checkboxNode.type = 'checkbox';
+        checkboxNode.id = `rule-${rule.id}`;
+        checkboxNode.className = 'rule';
+        if (rule.enabled) {
+            checkboxNode.setAttribute('checked', 'checked');
+        }
+        return checkboxNode;
+    }
+
+    function makeLabel(rule) {
+        const labelNode = document.createElement('label');
+        labelNode.htmlFor = `rule-${rule.id}`;
+        labelNode.appendChild(document.createTextNode(rule.description));
+        return labelNode;
+    }
+
+    const ruleset = document.getElementById('ruleset');
+    const ruleTypes = ['rules', 'destinationRules'];
+    for (let rt = 0; rt < ruleTypes.length; rt++) {
+        const ruleType = ruleTypes[rt];
+        for (let r = 0; r < board.game[ruleType].length; r++) {
+            const rule = board.game[ruleType][r];
+            if (!rule.required) {
+                const checkboxNode = makeCheckbox(rule);
+                const labelNode = makeLabel(rule);
+                checkboxNode.addEventListener('click', function() {
+                    board.game[ruleType][r].enabled = this.checked;
+                });
+                ruleset.append(checkboxNode);
+                ruleset.append(labelNode);
+                ruleset.append(document.createElement('br'));
+            }
+        }
+    }
+
+    const updatePlayer = () => {
+        const playerField = document.getElementById('current-player');
+        if (board.game.currentPlayer) {
+            playerField.value = `${board.game.currentPlayer.username} - ${board.game.currentPlayer.color}`;
+        } else {
+            playerField.value = "";
+        }
+    };
 
     document.getElementById('controls').reset();
     document.getElementById('button-reset-game').addEventListener('click', () => {
-        board = startGame(document.getElementById('base-size').value);
+        board.n = document.getElementById('base-size').value;
+        setUpGame(board);
         updatePlayer();
+        board.init();
         document.getElementById('button-do-move').disabled = false;
         document.getElementById('button-reset-move').disabled = false;
     });
@@ -116,5 +186,7 @@
         const optionNode = document.getElementById(`select-${player.color}`);
         optionNode.parentNode.removeChild(optionNode);
     });
+
+    board.init();
 </script>
 </html>

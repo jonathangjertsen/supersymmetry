@@ -33,7 +33,7 @@ class Board {
         };
 
         this.colors = {
-            background: tinycolor('#99ffcc').brighten(25),
+            background: tinycolor('#ffffff').brighten(25),
             forbidden: tinycolor('#ff9900').brighten(25),
             free: tinycolor('#99ffcc'),
             black: tinycolor('#000000'),
@@ -51,22 +51,85 @@ class Board {
             didSingleHop: false,
             rules: [
                 {
+                    id: 'OutOfRepresentation',
+                    required: true,
+                    enabled: true,
                     description: 'Can not move out of bounds',
                     check: (i0, j0, i, j) => this.inBounds(i, j)
                 },
                 {
-                    description: 'Can not move out of the play area',
+                    id: 'OutOfBounds',
+                    required: true,
+                    enabled: true,
+                    description: 'Can not move out of bounds',
                     check: (i0, j0, i, j) => this.board[i][j] !== this.codes.forbidden
                 },
                 {
+                    id: 'SingleHopIsFinal',
+                    required: true,
+                    enabled: true,
+                    description: 'Can not move after moving by only one spot',
+                    check: (i0, j0, i, j) => {
+                        return !this.game.didSingleHop;
+                    }
+                },
+                {
+                    id: 'Line',
+                    required: false,
+                    enabled: true,
                     description: 'Must move in a line',
                     check: (i0, j0, i, j) => i === i0 || j === j0 || (i - i0 === j0 - j)
                 },
                 {
-                    description: 'Must move to an unoccupied slot',
+                    id: 'LineOrDiagonal',
+                    required: false,
+                    enabled: true,
+                    description: 'Must move in a line or along the diagonal',
+                    check: (i0, j0, i, j) => i === i0 || j === j0 || (i - i0 === j0 - j) || (i - i0 === j - j0)
+                },
+                {
+                    id: 'Unoccupied',
+                    required: false,
+                    enabled: true,
+                    description: 'Must land on an unoccupied slot (uncheck to allow a piece to be "captured" by landing on it)',
                     check: (i0, j0, i, j) => !this.occupied(i, j)
                 },
                 {
+                    id: 'OnePieceOver',
+                    required: false,
+                    enabled: false,
+                    description: 'Can not jump over multiple pieces in a jump',
+                    check: (i0, j0, i, j) => {
+                        const iMax = Math.max(i, i0), iMin = Math.min(i, i0), iD = Math.abs(i - i0);
+                        const jMax = Math.max(j, j0), jMin = Math.min(j, j0), jD = Math.abs(j - j0);
+                        let numOccupied = 0;
+                        if (i === i0) {
+                            for (let s = 1; s < jD; s++) {
+                                numOccupied += this.occupied(i, jMin + s);
+                            }
+                        } else if (j === j0) {
+                            for (let s = 1; s < iD; s++) {
+                                numOccupied += this.occupied(iMin + s, j);
+                            }
+                        } else if (i - i0 === j0 - j) {
+                            for (let s = 1; s < iD; s++) {
+                                numOccupied += this.occupied(iMin + s, jMax - s);
+                            }
+                        } else if (i - i0 === j - j0) {
+                            for (let s = 1; s < iD; s++) {
+                                numOccupied += this.occupied(iMin + s, jMin + s);
+                            }
+                        } else {
+                            return false;
+                        }
+
+                        return numOccupied <= 1;
+                    }
+                },
+                {
+                    id: 'SuperSymmetry',
+                    required: false,
+                    enabled: true,
                     description: 'Move must be mirror symmetric',
                     check: (i0, j0, i, j) => {
                         const iMax = Math.max(i, i0), iMin = Math.min(i, i0), iD = Math.abs(i - i0);
@@ -103,13 +166,10 @@ class Board {
                     }
                 },
                 {
-                    description: 'Can not move after moving by only one spot',
-                    check: (i0, j0, i, j) => {
-                        return !this.game.didSingleHop;
-                    }
-                },
-                {
-                    description: 'Can not cross gaps',
+                    id: 'NoGaps',
+                    enabled: true,
+                    required: false,
+                    description: 'Can not cross gaps without jumping over a piece',
                     check: (i0, j0, i, j) => {
                         const iMax = Math.max(i, i0), iMin = Math.min(i, i0), iD = Math.abs(i - i0);
                         const jMax = Math.max(j, j0), jMin = Math.min(j, j0), jD = Math.abs(j - j0);
@@ -147,36 +207,48 @@ class Board {
                         }
                         return false;
                     }
+                },
+                {
+                    id: 'NoEnemyLanding',
+                    enabled: false,
+                    required: true,
+                    description: 'Can not land in enemy territory, even temporarily',
+                    check: this.inEnemyTerritory.bind(this)
                 }
             ],
             destinationRules: [
                 {
-                    description: 'Can not land in enemy territory',
-                    check: (i, j) => {
-                        const playerColor = this.game.currentPlayer.color;
-                        const locationColor = this.nameFromCode(this.board[i][j]);
-
-                        if (locationColor === 'free') {
-                            return true;
-                        }
-
-                        if (playerColor === 'red' || playerColor === 'black') {
-                            return locationColor === 'red' || locationColor === 'black';
-                        }
-
-                        if (playerColor === 'green' || playerColor === 'white') {
-                            return locationColor === 'green' || locationColor === 'green';
-                        }
-
-                        if (playerColor === 'yellow' || playerColor === 'blue') {
-                            return locationColor === 'yellow' || locationColor === 'blue';
-                        }
-
-                        return false;
-                    }
+                    id: 'NoEnemyFinishing',
+                    enabled: true,
+                    required: false,
+                    description: 'Can not finish in enemy territory',
+                    check: this.inEnemyTerritory.bind(this)
                 }
             ]
         };
+    }
+
+    inEnemyTerritory(i, j) {
+        const playerColor = this.game.currentPlayer.color;
+        const locationColor = this.nameFromCode(this.board[i][j]);
+
+        if (locationColor === 'free') {
+            return true;
+        }
+
+        if (playerColor === 'red' || playerColor === 'black') {
+            return locationColor === 'red' || locationColor === 'black';
+        }
+
+        if (playerColor === 'green' || playerColor === 'white') {
+            return locationColor === 'green' || locationColor === 'green';
+        }
+
+        if (playerColor === 'yellow' || playerColor === 'blue') {
+            return locationColor === 'yellow' || locationColor === 'blue';
+        }
+
+        return false;
     }
 
     occupied(i, j) {
@@ -249,16 +321,20 @@ class Board {
             return;
         }
 
+        const isOwnPiece = this.nameFromCode(this.locations[i][j]) === this.game.currentPlayer.color;
+
         // If something is highlighted already
         if (this.game.currentPlayer.highlightedPiece) {
-            this.tryMove(i, j);
-            return;
+            if (!isOwnPiece) {
+                this.tryMove(i, j);
+                return;
+            }
+            this.resetMoves();
         }
 
         // If nothing is highlighted
         this.save();
-        const color = this.nameFromCode(this.locations[i][j]);
-        if (color !== this.game.currentPlayer.color) {
+        if (!isOwnPiece) {
             this.reportError("Must choose an own piece");
             return;
         }
@@ -269,7 +345,7 @@ class Board {
         const prevPiece = this.game.currentPlayer.highlightedPiece;
         for (let r = 0; r < this.game.rules.length; r++) {
             const rule = this.game.rules[r];
-            if (!rule.check(prevPiece.i, prevPiece.j, i, j)) {
+            if (rule.enabled && !rule.check(prevPiece.i, prevPiece.j, i, j)) {
                 this.reportError(`${rule.description}, tried (${prevPiece.i}, ${prevPiece.j}) --> (${i}, ${j})`);
                 return;
             }
@@ -286,7 +362,7 @@ class Board {
         if (this.drawing.highlightAllowed) {
             this.forBoard((iMaybe, jMaybe) => {
                 for (let r = 0; r < this.game.rules.length; r++) {
-                    if (!this.game.rules[r].check(i, j, iMaybe, jMaybe)) {
+                    if (this.game.rules[r].enabled && !this.game.rules[r].check(i, j, iMaybe, jMaybe)) {
                         return;
                     }
                 }
@@ -304,7 +380,7 @@ class Board {
             const piece = this.game.currentPlayer.highlightedPiece;
             for (let r = 0; r < this.game.destinationRules.length; r++) {
                 let rule = this.game.destinationRules[r];
-                if (!rule.check(piece.i, piece.j)) {
+                if (rule.enabled && !rule.check(piece.i, piece.j)) {
                     this.reportError(`Error: ${rule.description}, tried landing on (${piece.i}, ${piece.j})`);
                     this.resetMoves();
                     return;
@@ -501,6 +577,10 @@ class Board {
         }
     }
 
+    copycolor(color) {
+        return tinycolor(color.toHexString());
+    }
+
     drawBoard() {
         const codes = this.codes;
         const ctx = this.drawing.ctx;
@@ -512,7 +592,11 @@ class Board {
 
             // Board
             ctx.beginPath();
-            ctx.fillStyle = this.colors.forbidden.toHexString();
+            const mid = this.drawing.unit * (2 * this.n + 1);
+            const gradient = this.drawing.ctx.createRadialGradient(mid*0.3, mid*0.3, 0, mid, mid, mid);
+            gradient.addColorStop(1, this.copycolor(this.colors.forbidden).darken(10));
+            gradient.addColorStop(0, this.copycolor(this.colors.forbidden).brighten(35));
+            ctx.fillStyle = gradient;
             ctx.strokeStyle = 'black';
             ctx.lineWidth = 5;
             ctx.moveTo(this.x(this.n-1, this.n-1), this.y(this.n-1, this.n-1));
@@ -546,10 +630,18 @@ class Board {
                 return;
             }
 
+            ctx.save();
             ctx.beginPath();
-            ctx.fillStyle = this.placeColor(code);
-            ctx.arc(this.x(i, j), this.y(i, j), this.drawing.unit / 4, 0, 2 * Math.PI);
+            ctx.lineWidth = 0.4;
+            const x = this.x(i, j), y = this.y(i, j), r = this.drawing.unit / 4;
+            const gradient = this.drawing.ctx.createRadialGradient(x-r/3, y-r/3, 0, x, y, r);
+            gradient.addColorStop(1, this.placeColor(code));
+            gradient.addColorStop(0, this.pieceColor(code));
+            ctx.fillStyle = gradient;
+            ctx.arc(x, y, r, 0, 2 * Math.PI);
             ctx.fill();
+            ctx.stroke();
+            ctx.restore();
         });
         ctx.restore();
     }
@@ -563,11 +655,17 @@ class Board {
     }
 
     drawPiece(i, j, color) {
+        this.drawing.ctx.save();
+        const x = this.x(i, j), y = this.y(i, j), r = this.drawing.unit / 3;
         this.drawing.ctx.beginPath();
-        this.drawing.ctx.fillStyle = this.pieceColor(color);
-        this.drawing.ctx.arc(this.x(i, j), this.y(i, j), this.drawing.unit / 3, 0, 2 * Math.PI);
+        const gradient = this.drawing.ctx.createRadialGradient(x-r/3, y-r/3, 0, x, y, r);
+        gradient.addColorStop(1, this.pieceColor(color));
+        gradient.addColorStop(0, this.placeColor(color));
+        this.drawing.ctx.fillStyle = gradient;
+        this.drawing.ctx.arc(x, y, r, 0, 2 * Math.PI);
         this.drawing.ctx.fill();
         this.drawing.ctx.stroke();
+        this.drawing.ctx.restore();
     }
 
     drawAllPieces() {
@@ -626,7 +724,8 @@ class Board {
     }
 
     addRule(rule) {
-        this.game.rules.push(rule.bind(this));
+        rule.check = rule.check.bind(this);
+        this.game.rules.push(rule);
     }
 
     playerIdx(color) {
