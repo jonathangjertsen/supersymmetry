@@ -1,5 +1,10 @@
 from itertools import combinations
 
+from matplotlib import pyplot as plt
+
+from game import Game
+from hooks import NoHooks
+
 def populate_opponent_models(game, players, model_classes, model_params):
     m = len(players)
     
@@ -76,7 +81,7 @@ class ResultPlotter(object):
             color: [
                 steps
                 for step_winners
-                in simulator.winners
+                in self.simulator.winners
                 for color_, steps
                 in step_winners
                 if color_ == color

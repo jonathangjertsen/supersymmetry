@@ -1,3 +1,10 @@
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import numpy as np
+
+from coordinate_transformer import CoordinateTransformer
+import plotlib
+
 class Board():
     def __init__(self, n=4, colors = ("red", "yellow", "green", "black", "blue", "grey")):
         self.n = n
@@ -13,7 +20,8 @@ class Board():
         
         # A function that determines whether the coordinate belongs to the home of color 0.
         # Inferred from looking at the coordinates on the board.
-        in_first_home = lambda vec: vec[0] > n and vec[1] >= -n and vec[2] <= n
+        def in_first_home(vec):
+            return vec[0] > n and vec[1] >= -n and vec[2] <= n
 
         # Mapping from color to a function that determines whether the coordinate belongs to its home.
         self.colors = {
@@ -63,7 +71,7 @@ class Board():
     
     def in_board(self, vec):
         """Returns whether the vector is inside of the board"""
-        if self.in_field(vec, self.n):
+        if self.in_field(vec):
             return True
         for func in self.colors.values():
             if func(vec, self.n):
@@ -85,6 +93,7 @@ class Board():
             else:
                 vectors.extend(zip(us, range(-n, n-u+1), range(-n+u, n+1)))
         return vectors
+
 
 class BoardPlotter(object):
     def __init__(self, board, transformer):

@@ -5,6 +5,7 @@ import networkx as nx
 
 from plotlib import arrow, geom_plot, init
 
+
 def unit_coords_plot():
     init()
     u = np.array([1, 0])
@@ -16,6 +17,7 @@ def unit_coords_plot():
     arrow([0, 0], v, text="Av = (-1/2, √3/2)", color="red")
     arrow([0, 0], w, text="Aw = (1/2, √3/2)", color="red")
     geom_plot()
+
 
 def coordinate_plot(transformer):
     init()
@@ -31,6 +33,7 @@ def coordinate_plot(transformer):
     arrow([0, 0], transformer(y), text="y = A(v + w)/√3")
     arrow(transformer(u), transformer(w))
     geom_plot()
+
 
 def rotation_plot(rotator, transformer):
     init()
@@ -56,6 +59,7 @@ def rotation_plot(rotator, transformer):
     arrow(transformer(w), transformer(w_), color="blue", curved=-1, alpha=alpha)
     geom_plot()
 
+
 def progress_plot(board_plotter):
     n = board_plotter.board.n
     plt.figure(figsize=(9,9))
@@ -69,6 +73,7 @@ def progress_plot(board_plotter):
     plt.ylim(-3.2*n, 3.3*n)
     plt.xlim(-3.3*n, 4.8*n);
 
+
 def plot_move_tree(move_tree, board, name):
     plt.figure()
     nx.draw(
@@ -78,6 +83,7 @@ def plot_move_tree(move_tree, board, name):
         with_labels=True
     )
     plt.plot()
+
 
 def progress_time_plot(progress):
     mpl.style.use("seaborn")

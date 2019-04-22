@@ -1,14 +1,22 @@
 from collections import deque
+import heapq
 import random
+
 import networkx as nx
+import numpy as np
+
+from game import MoveState
 
 class Player(object):
-    """Basic player with no defined behavious"""
+    """Basic player with no defined behaviours"""
+    def play(self):
+        raise NotImplementedError("No play method defined")
+
     def __init__(self, name, game, params=None):
         self.name = name
         self.game = game
         self.params = params
-    
+
     def __repr__(self):
         return "Player(name={}, class={}, {})".format(self.name, type(self).__name__, ", ".join("{}={}".format(key, value) for key, value in self.params.items()))
         
@@ -26,15 +34,20 @@ class Player(object):
 
 class DepthFirstMoveFinderMixin(object):
     """Explores the entire tree of possibilities"""
-    def __init__(self, name, game, params):
-        super().__init__(name, game, params)
+    def positions(self):
+        raise NotImplementedError("No positions method defined")
+
+    def __init__(self, name, game, params=None):
+        self.name = name
+        self.game = game
+        self.params = params
         self.explored_positions = deque([], maxlen=params.get('position_memory', 5))
-    
+
     def moves(self):
         game = self.game
         board = self.game.board
         
-        self.explored_positions.add(frozenset(self.positions()))
+        self.explored_positions.append(frozenset(self.positions()))
         
         for i in range(game.pieces_per_player):
             start_spot = game.player_spots[self.name][i]
@@ -85,6 +98,9 @@ class DepthFirstMoveFinderMixin(object):
             return path
 
 class BaseProgressTracker(Player):
+    def moves(self):
+        raise NotImplementedError("No moves method defined")
+
     def play(self):
         return self.choose(self.build_heap())
     
@@ -115,12 +131,12 @@ class NonPlanningProgressMaximizer(BaseProgressTracker, DepthFirstMoveFinderMixi
 
 class RandomSingleMovePlayer(Player):
     def play(self):
-        game = player.game
-        start_spot = game.player_spots[player.name][np.random.choice(game.pieces_per_player)]
-        legal_moves = game.get_legal_moves(player.name, start_spot)
+        game = self.game
+        start_spot = game.player_spots[self.name][np.random.choice(game.pieces_per_player)]
+        legal_moves = game.get_legal_moves(self.name, start_spot)
         while True:
             endpoint, move_state = random.choice(legal_moves)
-            if game.is_legal_endpoint(player.name, start_spot, endpoint):
+            if game.is_legal_endpoint(self.name, start_spot, endpoint):
                 return [start_spot, endpoint]
 
 
@@ -146,7 +162,7 @@ class SingleMoveProgressMaximizer(BaseProgressTracker):
                 yield progress, [start_spot, move]
 
 class PlanningProgressMaximizer(BaseProgressTracker):
-    def __init__(self, name, game, params):
+    def __init__(self, name, game, params=None):
         super().__init__(name, game, params)
         self.move_finder = NonPlanningProgressMaximizer(name, game, { 'max_depth': params['max_depth'] })
         self.opponent_models = params.get('opponent_models', [])
@@ -190,7 +206,7 @@ class PlanningProgressMaximizer(BaseProgressTracker):
                 opponent_move = opponent.play()
                 opponent_start = opponent_move[0]
                 opponent_end = opponent_move[-1]
-                self.game.push_move(self.name, start, end, MoveState.ALREADY_CHECKED)
+                self.game.push_move(self.name, opponent_start, opponent_end, MoveState.ALREADY_CHECKED)
                 n_pushes += 1
             
             # Check the expected total progress after doing the move

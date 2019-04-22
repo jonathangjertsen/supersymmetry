@@ -1,3 +1,13 @@
+from collections import defaultdict
+
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import numpy as np
+
+from coordinate_transformer import CoordinateTransformer
+from game import GamePlotter
+
+
 class GameHooks(object):
     def get(self, callback_name, default=None):
         if hasattr(self, callback_name):
@@ -34,10 +44,10 @@ class ProgressTrackerHooks(GameHooks):
         self.progress = []
         self.progress_for_this_game = defaultdict(list)
     
-    def before_game(self, game):
+    def before_game(self, _):
         self.progress_for_this_game = defaultdict(list)
     
-    def after_play(self, color, player, moves):
+    def after_play(self, color, player, _):
         self.progress_for_this_game[color].append(player.total_progress())
     
     def after_game(self):
@@ -75,10 +85,10 @@ class PlotHooks(GameHooks):
     def after_move(self, start, end):
         self.plotter.plot_move(start, end)
 
-    def before_play(self, color, player):
+    def before_play(self, *_):
         self.plotter.plot()
         
-    def after_play(self, color, player, moves):
+    def after_play(self, *_):
         self.play_counter += 1
         plt.xticks([])
         plt.yticks([])

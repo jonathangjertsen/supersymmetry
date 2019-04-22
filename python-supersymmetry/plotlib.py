@@ -3,8 +3,6 @@ import time
 import matplotlib as mpl
 from matplotlib import pyplot as plt
 from matplotlib import patches
-from mpl_toolkits import mplot3d
-
 
 import numpy as np
 
@@ -102,4 +100,4 @@ def plot_path(vectors, transformer, text=True, **kwargs):
             text=str(vector) if text else None,
             curved=True
         )
-    geom_plot(**kwargs);
+    geom_plot(**kwargs)

@@ -1,11 +1,19 @@
+from enum import Enum
+
+import numpy as np
+
+from board import Board, BoardPlotter
+
 class InvalidMoveException(Exception):
     pass
+
 
 class MoveState(Enum):
     FIRST = 0
     SUBSEQUENT = 1
     SUBSEQUENT_AFTER_SINGLE_MOVE = 2
     ALREADY_CHECKED = 3
+
 
 class Game(object):
     TRUST_PLAYERS = False
@@ -34,12 +42,7 @@ class Game(object):
             d2 = d + 1
             if d2 == 3:
                 d2 = 0
-                d3 = 1
-            elif d2 == 2:
-                d3 = 0
-            else:
-                d3 = d2 + 1
-            
+
             # Find the line from vec_in to vec_out
             line = np.array([spot for spot in self.board.board_spots if spot[d] == xi])
 
@@ -156,6 +159,7 @@ class Game(object):
                 self.cache_occupied[vec_in] = False
                 self.cache_occupied[vec_out] = True
                 return True
+        return False
     
     def push_move(self, *args):
         self.move_stack.append(args)
